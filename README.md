@@ -29,75 +29,92 @@ source .venv/bin/activate  # Linux/Mac
 pip install -e .
 ```
 
-## Uso Básico
+## Uso Básico (CLI)
 
 ### 1. Coletar notícias de uma fonte específica
 
-**InfoMoney (últimos artigos)**:
+**InfoMoney (últimos 20 artigos)**:
 
-```python
-from news_scraper.browser import BrowserConfig, ProfessionalScraper
-from news_scraper.sources.pt import InfoMoneyScraper
-
-config = BrowserConfig(headless=True)
-with ProfessionalScraper(config) as browser:
-    scraper = InfoMoneyScraper(browser)
-    urls = scraper.get_latest_articles(category="mercados", limit=20)
-    print(f"Coletadas {len(urls)} URLs")
+```bash
+python -m news_scraper collect --source infomoney --limit 20 --dataset-dir data/processed/articles
 ```
 
-**Categorias disponíveis**: `mercados`, `economia`, `politica`, `negocios`
+**Valor categoria mercados**:
 
-**Yahoo Finance (notícias dos EUA)**:
-
-```python
-from news_scraper.sources.en import YahooFinanceUSScraper
-
-with ProfessionalScraper(config) as browser:
-    scraper = YahooFinanceUSScraper(browser)
-    urls = scraper.get_latest_articles(limit=20)
+```bash
+python -m news_scraper collect --source valor --category mercados --limit 15 --dataset-dir data/processed/articles
 ```
 
-### 2. Extrair conteúdo completo de URLs
+**Múltiplas fontes de uma vez**:
 
-```python
-from news_scraper.extract import extract_article_metadata
-
-url = "https://www.infomoney.com.br/mercados/exemplo/"
-with ProfessionalScraper(config) as browser:
-    metadata = extract_article_metadata(url, browser.driver)
-    print(f"Título: {metadata['title']}")
-    print(f"Texto: {metadata['text'][:200]}...")
+```bash
+python -m news_scraper collect --source infomoney --source moneytimes --source valor --limit 10 --dataset-dir data/processed/articles
 ```
 
-### 3. Salvar em dataset Parquet (análise temporal)
+**Categorias disponíveis por fonte**:
+- **InfoMoney**: `mercados`, `economia`, `politica`, `negocios`
+- **MoneyTimes**: `mercado`, `investimentos`, `negocios`
+- **Valor**: `financas`, `empresas`, `investimentos`
+- **E-Investidor**: `mercados`, `acoes`
 
-```python
-from news_scraper.dataset import write_to_dataset
+### 2. Extrair conteúdo de URLs específicas
 
-articles = []
-with ProfessionalScraper(config) as browser:
-    scraper = InfoMoneyScraper(browser)
-    urls = scraper.get_latest_articles(limit=10)
-    
-    for url in urls:
-        metadata = extract_article_metadata(url, browser.driver)
-        articles.append(metadata)
+```bash
+# Arquivo com URLs (1 por linha)
+python -m news_scraper scrape --input urls.txt --out artigos.jsonl
 
-# Salva particionado por ano/mês/dia/fonte
-write_to_dataset(articles, "data/processed/articles")
+# URLs diretas
+python -m news_scraper scrape \
+  --url "https://www.infomoney.com.br/mercados/exemplo/" \
+  --url "https://www.valor.com.br/financas/exemplo/" \
+  --out artigos.jsonl
+
+# Salvar direto no dataset Parquet
+python -m news_scraper scrape --input urls.txt --dataset-dir data/processed/articles
 ```
 
-### 4. Consultar dados com SQL (DuckDB)
+### 3. Consultar dados com SQL (DuckDB)
 
 ```bash
 # Ver estatísticas gerais
-python -m news_scraper.query stats --dataset-dir data/processed/articles
+python -m news_scraper stats --dataset-dir data/processed/articles
 
-# Consulta SQL customizada
-python -m news_scraper.query sql \
+# Consulta SQL customizada (formato tabela)
+python -m news_scraper query \
   --dataset-dir data/processed/articles \
-  --sql "SELECT source, COUNT(*) as total FROM articles GROUP BY source"
+  --sql "SELECT source, COUNT(*) as total FROM articles GROUP BY source ORDER BY total DESC"
+
+# Exportar para CSV
+python -m news_scraper query \
+  --dataset-dir data/processed/articles \
+  --sql "SELECT * FROM articles WHERE source = 'infomoney.com.br' LIMIT 100" \
+  --format csv > export.csv
+
+# Exportar para JSON
+python -m news_scraper query \
+  --dataset-dir data/processed/articles \
+  --sql "SELECT title, date_published FROM articles WHERE date_published >= '2026-01-01'" \
+  --format json > artigos_2026.json
+```
+
+### 4. Coletar de feeds RSS
+
+```bash
+# RSS específico
+python -m news_scraper rss --feed "https://exemplo.com/rss" --out links.txt
+
+# RSS + scraping automático
+python -m news_scraper rss \
+  --feed "https://exemplo.com/rss" \
+  --scrape \
+  --dataset-dir data/processed/articles \
+  --limit 50
+
+# Usar sources.csv (apenas feeds enabled=1)
+python -m news_scraper rss \
+  --sources-csv configs/sources.csv \
+  --scrape \
+  --dataset-dir data/processed/articles
 ```
 
 Ou direto em Python:
@@ -116,20 +133,97 @@ df = con.execute("""
 print(df)
 ```
 
-## Exemplos Avançados
+## Comandos CLI Avançados
+
+### Gerenciar fontes (sources.csv)
+
+```bash
+# Listar todas as fontes
+python -m news_scraper sources list
+
+# Adicionar nova fonte
+python -m news_scraper sources add \
+  --id "minhafonte" \
+  --name "Minha Fonte" \
+  --type rss \
+  --url "https://minhafonte.com/rss"
+
+# Habilitar/desabilitar fonte
+python -m news_scraper sources enable minhafonte
+python -m news_scraper sources disable minhafonte
+```
+
+### Coleta histórica
+
+```bash
+# Gerar URLs por padrão de data
+python -m news_scraper historical generate \
+  --pattern "https://exemplo.com/arquivo/{YYYY}/{MM}/{DD}/" \
+  --start 2025-01-01 \
+  --end 2025-12-31 \
+  --out urls_2025.txt
+
+# Extrair URLs de página de arquivo
+python -m news_scraper historical archive \
+  --url "https://exemplo.com/arquivo/2025/" \
+  --out urls_arquivo.txt
+```
+
+### Scraping com browser (JavaScript, paywalls)
+
+```bash
+# Modo browser completo (Selenium + Chrome)
+python -m news_scraper browser \
+  --url "https://site-com-javascript.com/artigo" \
+  --out artigo.json
+
+# Com proxy e modo headless desabilitado
+python -m news_scraper browser \
+  --url "https://site-protegido.com/" \
+  --use-proxy \
+  --no-headless
+```
+
+### Filtros e limites
+
+```bash
+# Filtrar por data (após coleta)
+python -m news_scraper collect \
+  --source infomoney \
+  --start-date 2026-01-01 \
+  --end-date 2026-01-31 \
+  --dataset-dir data/processed/articles
+
+# Apenas coletar URLs (sem scraping)
+python -m news_scraper collect \
+  --source valor \
+  --category mercados \
+  --skip-scrape \
+  --urls-out valor_urls.txt
+
+# Modo verboso (debug)
+python -m news_scraper collect \
+  --source moneytimes \
+  --verbose \
+  --limit 5
+```
+
+## API Python (Uso Programático)
+
+Para integração em projetos Python:
 
 ### Coletar de múltiplas fontes
 
 ```python
-from news_scraper.sources.pt import InfoMoneyScraper, MoneyTimesScraper, ValorScraper
-from news_scraper.sources.en import ReutersScraper, CNBCScraper
+from news_scraper.browser import BrowserConfig, ProfessionalScraper
+from news_scraper.sources.pt import InfoMoneyScraper, ValorScraper
+from news_scraper.sources.en import ReutersScraper
 
+config = BrowserConfig(headless=True)
 sources = [
     ("InfoMoney", InfoMoneyScraper, "mercados"),
-    ("MoneyTimes", MoneyTimesScraper, "mercado"),
     ("Valor", ValorScraper, "financas"),
     ("Reuters", ReutersScraper, "markets"),
-    ("CNBC", CNBCScraper, "markets"),
 ]
 
 all_urls = []
@@ -139,41 +233,22 @@ with ProfessionalScraper(config) as browser:
         urls = scraper.get_latest_articles(category=category, limit=10)
         print(f"{name}: {len(urls)} URLs")
         all_urls.extend(urls)
-
-print(f"Total: {len(all_urls)} URLs")
 ```
 
-### Filtrar por período (coleta histórica)
-
-```python
-from datetime import datetime, timedelta
-
-# Gerar URLs por padrão de data
-from news_scraper.historical import generate_urls_by_pattern
-
-start = datetime(2025, 1, 1)
-end = datetime(2025, 12, 31)
-pattern = "https://exemplo.com/arquivo/{YYYY}/{MM}/{DD}/"
-
-urls = generate_urls_by_pattern(pattern, start, end)
-with open("urls_2025.txt", "w") as f:
-    f.write("\n".join(urls))
-```
-
-### Exportar para análise
+### Análise com DuckDB (Python)
 
 ```python
 import duckdb
 
 con = duckdb.connect()
-con.execute("""
-  COPY (
-    SELECT title, text, date_published, source
-    FROM read_parquet('data/processed/articles/**/*.parquet')
-    WHERE source = 'infomoney.com.br'
-      AND date_published >= '2026-01-01'
-  ) TO 'export_infomoney.csv' (HEADER, DELIMITER ',')
-""")
+df = con.execute("""
+  SELECT source, COUNT(*) as total, AVG(LENGTH(text)) as avg_chars
+  FROM read_parquet('data/processed/articles/**/*.parquet')
+  WHERE date_published >= '2026-01-01'
+  GROUP BY source ORDER BY total DESC
+""").df()
+
+print(df)
 ```
 
 ## Estrutura do Projeto
