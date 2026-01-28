@@ -12,42 +12,51 @@ Características:
 """
 
 from __future__ import annotations
-from typing import Literal
-from news_scraper.browser import ProfessionalScraper
+from typing import Literal, List, Optional
+from datetime import datetime
+import logging
+
+from ..base_scraper import BaseScraper
+
+logger = logging.getLogger(__name__)
 
 
-class InfoMoneyScraper:
+class InfoMoneyScraper(BaseScraper):
     """Scraper especializado para InfoMoney."""
     
-    def __init__(self, scraper: ProfessionalScraper):
-        """
-        Args:
-            scraper: Instância do ProfessionalScraper já inicializada
-        """
-        self.scraper = scraper
-        self.base_url = "https://www.infomoney.com.br"
+    BASE_URL = "https://www.infomoney.com.br"
+    MIN_SUCCESS_RATE = 0.6  # 60% - site brasileiro estável
+    HAS_PAYWALL = False
     
-    def get_latest_articles(
+    def __init__(self, scraper):
+        """Inicializa o scraper."""
+        super().__init__(scraper, source_id="infomoney")
+    
+    def _collect_urls(
         self,
-        category: Literal["mercados", "economia", "investimentos", "negocios", "carreira"] | None = None,
+        category: Optional[str] = None,
         limit: int = 20,
-    ) -> list[str]:
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> List[str]:
         """
-        Extrai URLs dos artigos mais recentes.
+        Implementação da coleta de URLs (método abstrato da classe base).
         
         Args:
-            category: Categoria específica (None = homepage com todas)
+            category: Categoria específica (mercados, economia, investimentos, negocios, carreira)
             limit: Número máximo de URLs para retornar
+            start_date: Data inicial (não implementado ainda)
+            end_date: Data final (não implementado ainda)
             
         Returns:
-            Lista de URLs de artigos
+            Lista de URLs coletadas
         """
         if category:
-            url = f"{self.base_url}/{category}/"
+            url = f"{self.BASE_URL}/{category}/"
         else:
-            url = self.base_url
+            url = self.BASE_URL
         
-        print(f"Coletando de: {url}")
+        logger.info(f"Coletando de: {url}")
         
         # Carregar página
         self.scraper.get_page(url, wait_time=3)
@@ -85,7 +94,7 @@ class InfoMoneyScraper:
         # Ordenar e limitar
         sorted_urls = sorted(article_urls)[:limit]
         
-        print(f"✓ {len(sorted_urls)} URLs encontradas")
+        logger.info(f"✓ {len(sorted_urls)} URLs encontradas")
         
         return sorted_urls
     

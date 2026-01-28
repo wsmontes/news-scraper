@@ -1,286 +1,283 @@
-# News Scraper (acadêmico)
+# News Scraper
 
-Projeto em Python para **extrair notícias a partir de URLs e/ou RSS** e salvar em **JSONL/CSV** ou em um **dataset Parquet particionado** (ideal para análise de sentimento e séries temporais via DuckDB/Pandas).
+Ferramenta para coleta automatizada de notícias financeiras de **19 fontes globais** (PT e EN), com suporte a scraping via browser, extração de metadados e armazenamento em dataset Parquet particionado.
 
-> Finalidade acadêmica: use com responsabilidade, respeitando `robots.txt`, termos de uso e limites de requisição.
+## Fontes Suportadas
 
-## Recursos
+**Português (4 fontes)**:
+- InfoMoney, MoneyTimes, Valor Econômico, E-Investidor (Estadão)
 
-- 🔍 Scraping de notícias via URLs ou RSS
-- 📊 Dataset Parquet particionado por data e fonte (otimizado para análise)
-- 🗄️ Consultas SQL direto no dataset (DuckDB)
-- 📋 Gerenciamento de fontes via CSV (fácil de manter)
-- 📈 Estatísticas rápidas do dataset
-- ⏱️ Timestamps `scraped_at` para rastreabilidade temporal
+**Inglês (15 fontes)**:
+- Yahoo Finance, Bloomberg, Reuters, CNBC, MarketWatch
+- Business Insider, Investing.com, Forbes, Investopedia
+- Financial Times, WSJ, Economist, Barron's, Seeking Alpha
+- Bloomberg LatAm
 
 ## Requisitos
 
 - Python **3.11+**
+- Chrome/Chromium (para scraping com browser)
 
 ## Instalação
 
 ```bash
+git clone https://github.com/seu-usuario/news-scraper.git
+cd news-scraper
 python -m venv .venv
-source .venv/bin/activate
-pip install -U pip
+source .venv/bin/activate  # Linux/Mac
+# .venv\Scripts\activate   # Windows
 pip install -e .
 ```
 
-## Uso rápido
+## Uso Básico
 
-### Exemplo prático: InfoMoney
+### 1. Coletar notícias de uma fonte específica
 
-**Passo 1: Extrair URLs com browser scraping**
+**InfoMoney (últimos artigos)**:
 
 ```python
-# Criar script para extrair URLs de artigos
 from news_scraper.browser import BrowserConfig, ProfessionalScraper
+from news_scraper.sources.pt import InfoMoneyScraper
 
 config = BrowserConfig(headless=True)
-with ProfessionalScraper(config) as scraper:
-    scraper.get_page('https://www.infomoney.com.br/', wait_time=3)
-    scraper.scroll_and_load(scroll_pause=1.5, max_scrolls=3)
-    
-    all_links = scraper.driver.find_elements('css selector', 'a')
-    
-    article_urls = []
-    for link in all_links:
-        href = link.get_attribute('href')
-        if href and '/mercados/' in href and len(href) > 60:
-            article_urls.append(href)
-    
-    article_urls = sorted(set(article_urls))[:20]
-    
-    with open('data/raw/infomoney_urls.txt', 'w') as f:
-        f.write('\n'.join(article_urls))
-    
-    print(f"✓ {len(article_urls)} URLs salvas")
+with ProfessionalScraper(config) as browser:
+    scraper = InfoMoneyScraper(browser)
+    urls = scraper.get_latest_articles(category="mercados", limit=20)
+    print(f"Coletadas {len(urls)} URLs")
 ```
 
-**Passo 2: Scrape os artigos para dataset Parquet**
+**Categorias disponíveis**: `mercados`, `economia`, `politica`, `negocios`
+
+**Yahoo Finance (notícias dos EUA)**:
+
+```python
+from news_scraper.sources.en import YahooFinanceUSScraper
+
+with ProfessionalScraper(config) as browser:
+    scraper = YahooFinanceUSScraper(browser)
+    urls = scraper.get_latest_articles(limit=20)
+```
+
+### 2. Extrair conteúdo completo de URLs
+
+```python
+from news_scraper.extract import extract_article_metadata
+
+url = "https://www.infomoney.com.br/mercados/exemplo/"
+with ProfessionalScraper(config) as browser:
+    metadata = extract_article_metadata(url, browser.driver)
+    print(f"Título: {metadata['title']}")
+    print(f"Texto: {metadata['text'][:200]}...")
+```
+
+### 3. Salvar em dataset Parquet (análise temporal)
+
+```python
+from news_scraper.dataset import write_to_dataset
+
+articles = []
+with ProfessionalScraper(config) as browser:
+    scraper = InfoMoneyScraper(browser)
+    urls = scraper.get_latest_articles(limit=10)
+    
+    for url in urls:
+        metadata = extract_article_metadata(url, browser.driver)
+        articles.append(metadata)
+
+# Salva particionado por ano/mês/dia/fonte
+write_to_dataset(articles, "data/processed/articles")
+```
+
+### 4. Consultar dados com SQL (DuckDB)
 
 ```bash
-news-scraper scrape \
-  --input data/raw/infomoney_urls.txt \
+# Ver estatísticas gerais
+python -m news_scraper.query stats --dataset-dir data/processed/articles
+
+# Consulta SQL customizada
+python -m news_scraper.query sql \
   --dataset-dir data/processed/articles \
-  --delay 2.0
+  --sql "SELECT source, COUNT(*) as total FROM articles GROUP BY source"
 ```
 
-**Passo 3: Consultar os dados**
-
-```bash
-# Ver estatísticas
-news-scraper stats --dataset-dir data/processed/articles
-
-# Consultar com SQL
-news-scraper query --dataset-dir data/processed/articles \
-  --sql "SELECT title, LENGTH(text) as chars FROM articles LIMIT 5"
-
-# Exportar para análise de sentimento
-news-scraper query --dataset-dir data/processed/articles \
-  --sql "SELECT title, text FROM articles" \
-  --format csv > infomoney_export.csv
-```
-
-Ou use o script de demonstração completo:
-
-```bash
-python scripts/demo_infomoney.py
-```
-
-### 1) Extrair a partir de uma lista de URLs
-
-```bash
-news-scraper scrape --input urls.txt --out outputs/noticias.jsonl
-```
-
-Para dataset analítico (Parquet particionado por data/fonte):
-
-```bash
-news-scraper scrape --input urls.txt --dataset-dir data/processed/articles
-```
-
-Formato CSV:
-
-```bash
-news-scraper scrape --input urls.txt --out outputs/noticias.csv --format csv
-```
-
-### 2) Coletar links a partir de RSS (e opcionalmente já raspar)
-
-Apenas listar links:
-
-```bash
-news-scraper rss --feed https://exemplo.com/rss.xml --out outputs/links.txt
-```
-
-Ou carregar a lista de feeds a partir de um CSV (mais fácil de manter):
-
-```bash
-news-scraper rss --sources-csv configs/sources.csv --out outputs/links.txt
-```
-
-Listar e já raspar os artigos:
-
-```bash
-news-scraper rss --feed https://exemplo.com/rss.xml --scrape --out outputs/noticias.jsonl
-```
-
-Raspar e gravar direto no dataset Parquet:
-
-```bash
-news-scraper rss --sources-csv configs/sources.csv --scrape --dataset-dir data/processed/articles
-```
-
-### 3) Gerenciar fontes (CSV)
-
-Listar fontes:
-
-```bash
-news-scraper sources list
-```
-
-Adicionar uma fonte:
-
-```bash
-news-scraper sources add --id folha --name "Folha de S.Paulo" --type rss \
-  --url "https://feeds.folha.uol.com.br/emcimadahora/rss091.xml" --tags "brasil;geral"
-```
-
-Desabilitar/habilitar:
-
-```bash
-newWorkflow recomendado (análise de sentimento por período)
-
-1. **Configure fontes** em `configs/sources.csv` (enabled, RSS, tags)
-2. **Colete artigos históricos** via scraping:
-   ```bash
-   news-scraper scrape --input urls_historico.txt --dataset-dir data/processed/articles
-   ```
-3. **Monitore feeds RSS** periodicamente (cron/agendamento):
-   ```bash
-   news-scraper rss --sources-csv configs/sources.csv --scrape --dataset-dir data/processed/articles
-   ```
-4. **Consulte por período** e exporte para análise:
-   ```bash
-   news-scraper query --dataset-dir data/processed/articles \
-     --sql "SELECT * FROM articles WHERE date_published BETWEEN '2020-01-01' AND '2020-01-31'" \
-     --format json > janeiro_2020.jsonl
-   ```
-5. **Análise de sentimento** (fora deste projeto): use bibliotecas como `transformers`, `textblob`, ou APIs especializadas sobre o JSONL exportado.
-
-## Consultar com DuckDB diretamente (Python/SQL)
+Ou direto em Python:
 
 ```python
 import duckdb
+
 con = duckdb.connect()
 df = con.execute("""
-  SELECT source, count(*) as total
+  SELECT source, COUNT(*) as total, AVG(LENGTH(text)) as avg_chars
   FROM read_parquet('data/processed/articles/**/*.parquet')
-  WHERE date_published >= '2020-01-01' AND date_published < '2020-02-01'
+  WHERE date_published >= '2026-01-01'
   GROUP BY source
   ORDER BY total DESC
 """).df()
-print(df)taset-dir data/processed/articles \
-  --sql "SELECT source, count(*) as total FROM articles WHERE date_published >= '2020-01-01' AND date_published < '2020-02-01' GROUP BY source ORDER BY total DESC"
+print(df)
 ```
 
-Exportar para CSV:
+## Exemplos Avançados
 
-```bash
-news-scraper query --dataset-dir data/processed/articles \
-  --sql "SELECT url, title, date_published FROM articles WHERE source = 'example.com' LIMIT 10" \
-  --format csv > resultados.csv
+### Coletar de múltiplas fontes
+
+```python
+from news_scraper.sources.pt import InfoMoneyScraper, MoneyTimesScraper, ValorScraper
+from news_scraper.sources.en import ReutersScraper, CNBCScraper
+
+sources = [
+    ("InfoMoney", InfoMoneyScraper, "mercados"),
+    ("MoneyTimes", MoneyTimesScraper, "mercado"),
+    ("Valor", ValorScraper, "financas"),
+    ("Reuters", ReutersScraper, "markets"),
+    ("CNBC", CNBCScraper, "markets"),
+]
+
+all_urls = []
+with ProfessionalScraper(config) as browser:
+    for name, ScraperClass, category in sources:
+        scraper = ScraperClass(browser)
+        urls = scraper.get_latest_articles(category=category, limit=10)
+        print(f"{name}: {len(urls)} URLs")
+        all_urls.extend(urls)
+
+print(f"Total: {len(all_urls)} URLs")
 ```
 
-### 5) Estatísticas rápidas
+### Filtrar por período (coleta histórica)
 
-```bash
-news-scraper stats --dataset-dir data/processed/articles
-```
-
-Mostra: total de artigos, top fontes, período coberto, artigos com erro.
-
-## Boas práticas (acadêmicas)
-
-- Preferir RSS quando existir.
-- Use `--respect-robots` (padrão: ligado) e aumente `--delay` se necessário.
-- Identifique-se com `--user-agent`.
-- Evite raspar paywalls e conteúdos que violem termos do site.
-
-## Estrutura
-
-- `src/news_scraper/cli.py`: CLI (`news-scraper`)
-- `src/news_scraper/scrape.py`: pipeline de scraping
-- `src/news_scraper/extract.py`: extração do conteúdo do HTML
-- `src/news_scraper/polite.py`: throttling + robots
-- `src/news_scraper/rss.py`: coleta de links via RSS
-- `src/news_scraper/io.py`: exportação JSONL/CSV
-- `src/news_scraper/dataset.py`: escrita Parquet particionada (DuckDB-friendly)
-- `src/news_scraper/sources.py`: leitura de fontes via CSV
-
-## Consultar com DuckDB (exemplo)
-
-Com o dataset em `data/processed/articles`, você pode consultar assim:
-
-```sql
-SELECT source, count(*)
-FROM read_parquet('data/processed/articles/**/*.parquet')
-WHERE date_published >= '2020-01-01' AND date_published < '2020-02-01'
-GROUP BY source
-ORDER BY count(*) DESC;
-```
-
-## Limitações
-
-Extração de conteúdo é heurística e varia por site. Alguns sites usam scripts, paywalls ou bloqueios; nesses casos, a extração pode falhar ou vir incompleta.
-
-## Documentação adicional
-
-- **[docs/HISTORICAL.md](docs/HISTORICAL.md)** - 🔥 **Como coletar notícias de períodos passados** (sitemaps, padrões de URL, arquivos)
-- [EXAMPLE_WORKFLOW.md](EXAMPLE_WORKFLOW.md) - Workflow completo para análise de sentimento
-- [docs/DEDUPLICATION.md](docs/DEDUPLICATION.md) - Estratégias de deduplicação
-- [docs/TIPS.md](docs/TIPS.md) - Dicas de escalabilidade, ética e troubleshooting
-- [data/README.md](data/README.md) - Estrutura de dados recomendada
-- [configs/README.md](configs/README.md) - Documentação do sources.csv
-
-## Comandos rápidos (cheat sheet)
-
-``=== Coleta histórica (períodos passados) ===
+```python
+from datetime import datetime, timedelta
 
 # Gerar URLs por padrão de data
-news-scraper historical generate \
-  --pattern "https://site.com/arquivo/{YYYY}/{MM}/{DD}/" \
-  --start 2020-01-01 --end 2020-12-31 \
-  --out urls_2020.txt
+from news_scraper.historical import generate_urls_by_pattern
 
-# Extrair de sitemap
-news-scraper historical sitemap \
-  --url https://example.com/sitemap.xml \
-  --filter "/2020/" --out urls_2020.txt
+start = datetime(2025, 1, 1)
+end = datetime(2025, 12, 31)
+pattern = "https://exemplo.com/arquivo/{YYYY}/{MM}/{DD}/"
 
-# Scrape das URLs históricas
-news-scraper scrape --input urls_2020.txt --dataset-dir data/processed/articles
-
-# === Coleta contínua (RSS) ===
-
-# Coletar de RSS configurado
-news-scraper rss --sources-csv configs/sources.csv --scrape --dataset-dir data/processed/articles
-
-# === Análise ===
-news-scraper rss --sources-csv configs/sources.csv --scrape --dataset-dir data/processed/articles
-
-# Ver estatísticas
-news-scraper stats --dataset-dir data/processed/articles
-
-# Consultar período específico
-news-scraper query --dataset-dir data/processed/articles \
-  --sql "SELECT * FROM articles WHERE date_published BETWEEN '2020-01-01' AND '2020-01-31'" \
-  --format json > janeiro.jsonl
-
-# Adicionar fonte
-news-scraper sources add --id g1 --name "G1" --type rss --url "https://g1.globo.com/rss/g1/"
-
-# Listar fontes
-news-scraper sources list
+urls = generate_urls_by_pattern(pattern, start, end)
+with open("urls_2025.txt", "w") as f:
+    f.write("\n".join(urls))
 ```
+
+### Exportar para análise
+
+```python
+import duckdb
+
+con = duckdb.connect()
+con.execute("""
+  COPY (
+    SELECT title, text, date_published, source
+    FROM read_parquet('data/processed/articles/**/*.parquet')
+    WHERE source = 'infomoney.com.br'
+      AND date_published >= '2026-01-01'
+  ) TO 'export_infomoney.csv' (HEADER, DELIMITER ',')
+""")
+```
+
+## Estrutura do Projeto
+
+```
+news-scraper/
+├── src/news_scraper/
+│   ├── sources/           # Scrapers especializados por fonte
+│   │   ├── pt/           # InfoMoney, MoneyTimes, Valor, E-Investidor
+│   │   ├── en/           # YahooFinance, Bloomberg, Reuters, etc.
+│   │   └── base_scraper.py  # Classe base com retry, métricas, validação
+│   ├── browser.py        # Automação com Selenium (ProfessionalScraper)
+│   ├── extract.py        # Extração de metadados (título, texto, data, autor)
+│   ├── dataset.py        # Escrita Parquet particionada
+│   ├── query.py          # Consultas SQL (DuckDB)
+│   └── historical.py     # Coleta de períodos passados (sitemaps, padrões)
+├── tests/                # 200+ testes (unit, integration, benchmarks)
+├── data/
+│   ├── raw/             # URLs coletadas
+│   └── processed/       # Dataset Parquet (year/month/day/source)
+└── docs/                # Documentação técnica
+```
+
+## Categorias por Fonte
+
+| Fonte | Categorias Disponíveis |
+|-------|----------------------|
+| **InfoMoney** | `mercados`, `economia`, `politica`, `negocios` |
+| **MoneyTimes** | `mercado`, `investimentos`, `economia` |
+| **Valor** | `financas`, `empresas`, `mercados`, `mundo`, `politica` |
+| **E-Investidor** | `mercados`, `investimentos`, `fundos-imobiliarios`, `cripto` |
+| **Yahoo Finance** | Sem categorias (feed principal) |
+| **Bloomberg** | `markets`, `economics`, `technology`, `politics` |
+| **Reuters** | `markets`, `business`, `world`, `technology` |
+| **CNBC** | `markets`, `investing`, `economy` |
+| **MarketWatch** | `markets`, `investing`, `personal-finance` |
+| **Outros** | Consulte a documentação de cada scraper |
+
+## Configuração de Métricas
+
+Cada scraper possui:
+- **MIN_SUCCESS_RATE**: Taxa mínima de sucesso (ex: 0.6 = 60%)
+- **HAS_PAYWALL**: Indica se tem paywall (`True`, `False`, `"partial"`)
+- **Retry automático**: 3 tentativas com backoff exponencial
+- **Coleta de métricas**: Tempo, taxa de sucesso, erros
+
+Exemplo de uso:
+
+```python
+from news_scraper.sources.base_scraper import MetricsCollector
+
+# Após executar scrapers, ver métricas agregadas
+collector = MetricsCollector()
+stats = collector.get_statistics()
+print(f"Taxa média de sucesso: {stats['average_success_rate']:.1%}")
+print(f"Total de erros: {stats['total_errors']}")
+```
+
+## Limitações e Considerações
+
+- **Paywalls**: Fontes com paywall (WSJ, FT, Economist, Barron's) têm taxa de sucesso baixa (20-30%)
+- **Anti-scraping**: Alguns sites podem bloquear após muitas requisições
+- **Extração**: Heurística, pode falhar em layouts dinâmicos ou não-padrão
+- **Performance**: Browser scraping é lento (2-5s por página)
+
+**Recomendações**:
+- Use `headless=True` para melhor performance
+- Adicione delays entre requisições (`time.sleep(2)`)
+- Para grandes volumes, considere proxies rotativos
+- Prefira RSS quando disponível
+
+## Scripts de Demonstração
+
+```bash
+# InfoMoney completo (coleta + análise)
+python scripts/demo_infomoney.py
+
+# Investigar estrutura de um site novo
+python scripts/investigate_site.py https://exemplo.com.br
+```
+
+## Testes
+
+```bash
+# Rodar todos os testes
+pytest tests/ -v
+
+# Testes rápidos (metadados e estrutura)
+pytest tests/test_global_sources.py -v
+
+# Benchmarks de performance
+pytest tests/test_scraper_benchmarks.py -v
+
+# Teste de um scraper específico
+pytest tests/test_infomoney_scraper.py -v
+```
+
+## Documentação Adicional
+
+- **[docs/HISTORICAL.md](docs/HISTORICAL.md)** - Coleta de notícias históricas (sitemaps, padrões de URL)
+- **[docs/TEST_COVERAGE.md](docs/TEST_COVERAGE.md)** - Cobertura de testes e benchmarks
+- **[docs/SOURCES_ORGANIZATION.md](docs/SOURCES_ORGANIZATION.md)** - Organização dos scrapers por idioma
+- **[EXAMPLE_WORKFLOW.md](EXAMPLE_WORKFLOW.md)** - Workflow completo para análise de dados
+
+## Licença
+
+MIT License - uso acadêmico e pessoal. Respeite os termos de uso dos sites raspados.

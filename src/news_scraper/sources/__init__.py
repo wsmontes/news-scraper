@@ -1,21 +1,21 @@
 """
-News Scraper - Sistema profissional de scraping de notícias financeiras.
+Módulo de fontes de notícias financeiras.
 
-Sistema modular com suporte para 19 fontes de notícias financeiras:
-- 15 fontes globais em inglês (US, UK)
-- 4 fontes brasileiras em português
+Organizado por idioma:
+- pt: Fontes em Português (Brasil)
+- en: Fontes em Inglês (Global)
 """
 
-__version__ = "0.1.0"
-
-# Importações organizadas por idioma
-from news_scraper.sources import (
-    # Fontes PT
+# Importar scrapers brasileiros
+from .pt import (
     InfoMoneyScraper,
+    MoneyTimesScraper,
     ValorScraper,
     EInvestidorScraper,
-    MoneyTimesScraper,
-    # Fontes EN
+)
+
+# Importar scrapers globais
+from .en import (
     BloombergScraper,
     BloombergLatAmScraper,
     FinancialTimesScraper,
@@ -33,14 +33,16 @@ from news_scraper.sources import (
     InvestingComScraper,
 )
 
+# Importar funções utilitárias CSV
+from .csv_utils import load_sources_csv, enabled_rss_feeds, Source
+
 __all__ = [
-    "__version__",
-    # Fontes PT
+    # Português (Brasil)
     "InfoMoneyScraper",
+    "MoneyTimesScraper",
     "ValorScraper",
     "EInvestidorScraper",
-    "MoneyTimesScraper",
-    # Fontes EN
+    # Inglês (Global)
     "BloombergScraper",
     "BloombergLatAmScraper",
     "FinancialTimesScraper",
@@ -56,4 +58,8 @@ __all__ = [
     "YahooFinanceUSScraper",
     "BusinessInsiderScraper",
     "InvestingComScraper",
+    # CSV Utils
+    "load_sources_csv",
+    "enabled_rss_feeds",
+    "Source",
 ]

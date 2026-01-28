@@ -1,7 +1,7 @@
 """Debug para verificar estrutura HTML e metadados das páginas."""
 
 from news_scraper.browser import BrowserConfig, ProfessionalScraper
-from news_scraper.infomoney_scraper import InfoMoneyScraper
+from news_scraper.sources.pt import InfoMoneyScraper
 from bs4 import BeautifulSoup
 
 config = BrowserConfig(headless=True)

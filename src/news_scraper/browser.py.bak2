@@ -56,34 +56,6 @@ class ProfessionalScraper:
         from urllib.parse import urlparse
         parsed = urlparse(url)
         return parsed.netloc
-    
-    def start_with_best_proxy_for_url(self, url: str) -> None:
-        """
-        Inicia browser com melhor proxy para a URL específica.
-        
-        Args:
-            url: URL que será acessada
-        """
-        if not self.config.use_proxy:
-            self.start()
-            return
-        
-        domain = self._extract_domain(url)
-        proxy_manager = self._get_proxy_manager()
-        
-        # Pegar melhor proxy para o domínio
-        self.current_proxy = proxy_manager.get_best_proxy_for_domain(domain)
-        
-        if self.current_proxy:
-            logger.info(f"Usando melhor proxy para {domain}: {self.current_proxy.selenium_format}")
-        
-        self.start()
-    
-    def _extract_domain(self, url: str) -> str:
-        """Extrai domínio de uma URL."""
-        from urllib.parse import urlparse
-        parsed = urlparse(url)
-        return parsed.netloc
 
     def start(self, use_proxy: Optional[bool] = None) -> None:
         """

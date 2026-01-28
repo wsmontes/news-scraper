@@ -13,34 +13,49 @@ Características:
 """
 
 from __future__ import annotations
-from news_scraper.browser import ProfessionalScraper
+from typing import List, Optional
+from datetime import datetime
+import logging
+
+from ..base_scraper import BaseScraper
+
+logger = logging.getLogger(__name__)
 
 
-class MoneyTimesScraper:
+class MoneyTimesScraper(BaseScraper):
     """Scraper especializado para Money Times."""
     
-    def __init__(self, scraper: ProfessionalScraper):
-        """
-        Args:
-            scraper: Instância do ProfessionalScraper já inicializada
-        """
-        self.scraper = scraper
-        self.base_url = "https://www.moneytimes.com.br"
+    BASE_URL = "https://www.moneytimes.com.br"
+    MIN_SUCCESS_RATE = 0.6  # 60%
+    HAS_PAYWALL = False
     
-    def get_latest_articles(self, limit: int = 20) -> list[str]:
+    def __init__(self, scraper):
+        """Inicializa o scraper."""
+        super().__init__(scraper, source_id="moneytimes")
+    
+    def _collect_urls(
+        self,
+        category: Optional[str] = None,
+        limit: int = 20,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> List[str]:
         """
-        Extrai URLs dos artigos mais recentes da homepage.
+        Implementação da coleta de URLs (método abstrato da classe base).
         
         Args:
+            category: Não usado (Money Times usa apenas homepage)
             limit: Número máximo de URLs para retornar
+            start_date: Data inicial (não implementado ainda)
+            end_date: Data final (não implementado ainda)
             
         Returns:
-            Lista de URLs de artigos
+            Lista de URLs coletadas
         """
-        print(f"Coletando de: {self.base_url}")
+        logger.info(f"Coletando de: {self.BASE_URL}")
         
         # Carregar página
-        self.scraper.get_page(self.base_url, wait_time=3)
+        self.scraper.get_page(self.BASE_URL, wait_time=3)
         
         # Scroll para carregar mais conteúdo
         self.scraper.scroll_and_load(scroll_pause=1.0, max_scrolls=2)
@@ -75,7 +90,7 @@ class MoneyTimesScraper:
         # Ordenar e limitar
         sorted_urls = sorted(article_urls)[:limit]
         
-        print(f"✓ {len(sorted_urls)} URLs encontradas")
+        logger.info(f"✓ {len(sorted_urls)} URLs encontradas")
         
         return sorted_urls
 

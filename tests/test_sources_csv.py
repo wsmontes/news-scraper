@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from news_scraper.sources import enabled_rss_feeds, load_sources_csv
+# Importar do módulo sources.py (não do diretório sources/)
+from news_scraper.sources import load_sources_csv, enabled_rss_feeds
 
 
 def test_load_sources_csv_and_enabled_rss(tmp_path: Path):

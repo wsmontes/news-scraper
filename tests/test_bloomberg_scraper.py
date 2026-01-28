@@ -7,7 +7,7 @@ com foco especial em data de publicação.
 
 import pytest
 from datetime import datetime
-from news_scraper.bloomberg_scraper import BloombergScraper
+from news_scraper.sources.en import BloombergScraper
 from news_scraper.browser import BrowserConfig, ProfessionalScraper
 from news_scraper.extract import extract_article_metadata
 

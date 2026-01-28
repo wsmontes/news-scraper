@@ -7,7 +7,7 @@ com foco especial em data de publicação.
 
 import pytest
 from datetime import datetime
-from news_scraper.valor_scraper import ValorScraper
+from news_scraper.sources.pt import ValorScraper
 from news_scraper.browser import BrowserConfig, ProfessionalScraper
 from news_scraper.extract import extract_article_metadata
 

@@ -12,11 +12,8 @@ Execute com: python -m scripts.demo_all_sources
 """
 
 from news_scraper.browser import BrowserConfig, ProfessionalScraper
-from news_scraper.infomoney_scraper import InfoMoneyScraper
-from news_scraper.valor_scraper import ValorScraper
-from news_scraper.bloomberg_scraper import BloombergScraper
-from news_scraper.einvestidor_scraper import EInvestidorScraper
-from news_scraper.moneytimes_scraper import MoneyTimesScraper
+from news_scraper.sources.pt import InfoMoneyScraper, ValorScraper, EInvestidorScraper, MoneyTimesScraper
+from news_scraper.sources.en import BloombergScraper
 from news_scraper.extract import extract_article_metadata
 
 

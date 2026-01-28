@@ -179,6 +179,84 @@ def build_parser() -> argparse.ArgumentParser:
     )
     hist_archive.add_argument("--out", type=Path, required=True, help="Arquivo de saída (.txt)")
 
+    # Comando collect - unificado e completo
+    collect = sub.add_parser(
+        "collect",
+        help="Coleta notícias de fontes financeiras (modo completo)"
+    )
+    collect.add_argument(
+        "--source",
+        action="append",
+        choices=["infomoney", "moneytimes", "valor", "bloomberg", "einvestidor", "all"],
+        required=True,
+        help="Fonte(s) para coletar (pode repetir para múltiplas)"
+    )
+    collect.add_argument(
+        "--category",
+        type=str,
+        help="Categoria específica (mercados, economia, etc) - varia por fonte"
+    )
+    collect.add_argument(
+        "--start-date",
+        type=str,
+        help="Data inicial para filtrar (YYYY-MM-DD) - filtra após coleta"
+    )
+    collect.add_argument(
+        "--end-date",
+        type=str,
+        help="Data final para filtrar (YYYY-MM-DD) - filtra após coleta"
+    )
+    collect.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Máximo de artigos por fonte"
+    )
+    collect.add_argument(
+        "--dataset-dir",
+        type=Path,
+        default=Path("data/processed/articles"),
+        help="Diretório do dataset Parquet"
+    )
+    collect.add_argument(
+        "--urls-out",
+        type=Path,
+        help="Salvar URLs coletadas em arquivo .txt (antes do scrape)"
+    )
+    collect.add_argument(
+        "--use-proxy",
+        action="store_true",
+        help="Usar sistema inteligente de proxies"
+    )
+    collect.add_argument(
+        "--proxy-fallback",
+        action="store_true",
+        default=True,
+        help="Fallback automático de proxy (padrão: ativado)"
+    )
+    collect.add_argument(
+        "--headless",
+        action="store_true",
+        default=True,
+        help="Browser em modo headless (padrão: ativado)"
+    )
+    collect.add_argument(
+        "--delay",
+        type=float,
+        default=2.0,
+        help="Delay entre requisições (segundos)"
+    )
+    collect.add_argument(
+        "--skip-scrape",
+        action="store_true",
+        help="Apenas coletar URLs, não fazer scrape"
+    )
+    collect.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Modo verboso (mais logs)"
+    )
+
     browser = sub.add_parser("browser", help="Scraping profissional com browser (JavaScript)")
     browser_sub = browser.add_subparsers(dest="browser_cmd", required=True)
 
@@ -261,6 +339,45 @@ def build_parser() -> argparse.ArgumentParser:
     )
     browser_moneytimes.add_argument("--headless", action="store_true", default=True)
 
+    browser_valor = browser_sub.add_parser("valor", help="Valor Econômico")
+    browser_valor.add_argument(
+        "--category",
+        choices=["financas", "empresas", "mercados", "mundo", "politica", "brasil"],
+        default=None,
+        help="Categoria específica"
+    )
+    browser_valor.add_argument("--limit", type=int, default=20, help="Máximo de URLs")
+    browser_valor.add_argument("--out", type=Path, required=True, help="Arquivo de saída (.txt)")
+    browser_valor.add_argument("--scrape", action="store_true", help="Scrape após coletar")
+    browser_valor.add_argument("--dataset-dir", type=Path, help="Diretório Parquet")
+    browser_valor.add_argument("--headless", action="store_true", default=True)
+
+    browser_bloomberg = browser_sub.add_parser("bloomberg", help="Bloomberg Brasil")
+    browser_bloomberg.add_argument(
+        "--category",
+        choices=["mercados", "economia", "negocios", "tecnologia"],
+        default=None,
+        help="Categoria específica"
+    )
+    browser_bloomberg.add_argument("--limit", type=int, default=20, help="Máximo de URLs")
+    browser_bloomberg.add_argument("--out", type=Path, required=True, help="Arquivo de saída (.txt)")
+    browser_bloomberg.add_argument("--scrape", action="store_true", help="Scrape após coletar")
+    browser_bloomberg.add_argument("--dataset-dir", type=Path, help="Diretório Parquet")
+    browser_bloomberg.add_argument("--headless", action="store_true", default=True)
+
+    browser_einvestidor = browser_sub.add_parser("einvestidor", help="E-Investidor (Estadão)")
+    browser_einvestidor.add_argument(
+        "--category",
+        choices=["mercados", "investimentos", "fundos-imobiliarios", "cripto", "acoes"],
+        default=None,
+        help="Categoria específica"
+    )
+    browser_einvestidor.add_argument("--limit", type=int, default=20, help="Máximo de URLs")
+    browser_einvestidor.add_argument("--out", type=Path, required=True, help="Arquivo de saída (.txt)")
+    browser_einvestidor.add_argument("--scrape", action="store_true", help="Scrape após coletar")
+    browser_einvestidor.add_argument("--dataset-dir", type=Path, help="Diretório Parquet")
+    browser_einvestidor.add_argument("--headless", action="store_true", default=True)
+
     return p
 
 
@@ -333,6 +450,138 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "stats":
         dataset_stats(args.dataset_dir)
+        return 0
+    
+    if args.cmd == "collect":
+        from datetime import datetime
+        from .infomoney_scraper import InfoMoneyScraper
+        from .moneytimes_scraper import MoneyTimesScraper
+        from .valor_scraper import ValorScraper
+        from .bloomberg_scraper import BloombergScraper
+        from .einvestidor_scraper import EInvestidorScraper
+        
+        # Configurar logging se verbose
+        if args.verbose:
+            import logging
+            logging.basicConfig(level=logging.INFO)
+        
+        # Determinar fontes
+        sources = args.source
+        if "all" in sources:
+            sources = ["infomoney", "moneytimes", "valor", "bloomberg", "einvestidor"]
+        else:
+            sources = list(set(sources))  # Remove duplicatas
+        
+        print(f"🎯 Coletando de {len(sources)} fonte(s): {', '.join(sources)}")
+        
+        # Configurar browser
+        config = BrowserConfig(
+            headless=args.headless,
+            use_proxy=args.use_proxy,
+            proxy_fallback=args.proxy_fallback,
+        )
+        
+        all_urls = []
+        
+        with ProfessionalScraper(config) as browser:
+            for source_name in sources:
+                print(f"\n📰 Fonte: {source_name.upper()}")
+                print(f"   Limite: {args.limit} artigos")
+                if args.category:
+                    print(f"   Categoria: {args.category}")
+                
+                try:
+                    urls = []
+                    
+                    if source_name == "infomoney":
+                        scraper = InfoMoneyScraper(scraper=browser)
+                        urls = scraper.get_latest_articles(
+                            category=args.category,
+                            limit=args.limit
+                        )
+                    
+                    elif source_name == "moneytimes":
+                        scraper = MoneyTimesScraper(scraper=browser)
+                        urls = scraper.get_latest_articles(limit=args.limit)
+                    
+                    elif source_name == "valor":
+                        scraper = ValorScraper(scraper=browser)
+                        urls = scraper.get_latest_articles(
+                            category=args.category,
+                            limit=args.limit
+                        )
+                    
+                    elif source_name == "bloomberg":
+                        scraper = BloombergScraper(scraper=browser)
+                        urls = scraper.get_latest_articles(
+                            category=args.category,
+                            limit=args.limit
+                        )
+                    
+                    elif source_name == "einvestidor":
+                        scraper = EInvestidorScraper(scraper=browser)
+                        urls = scraper.get_latest_articles(
+                            category=args.category,
+                            limit=args.limit
+                        )
+                    
+                    print(f"   ✓ Coletadas {len(urls)} URLs")
+                    all_urls.extend(urls)
+                    
+                except Exception as e:
+                    print(f"   ✗ Erro: {e}")
+                    if args.verbose:
+                        import traceback
+                        traceback.print_exc()
+        
+        print(f"\n📊 Total de URLs coletadas: {len(all_urls)}")
+        
+        # Salvar URLs se solicitado
+        if args.urls_out:
+            args.urls_out.parent.mkdir(parents=True, exist_ok=True)
+            args.urls_out.write_text("\n".join(all_urls) + "\n", encoding="utf-8")
+            print(f"   💾 URLs salvas em: {args.urls_out}")
+        
+        # Scrape se não for skip
+        if not args.skip_scrape:
+            if not all_urls:
+                print("⚠️  Nenhuma URL para scrape")
+                return 1
+            
+            print(f"\n🔄 Iniciando scrape de {len(all_urls)} artigos...")
+            print(f"   Dataset: {args.dataset_dir}")
+            print(f"   Delay: {args.delay}s")
+            
+            scrape_urls(
+                all_urls,
+                out_path=None,
+                dataset_dir=args.dataset_dir,
+                delay_seconds=args.delay,
+            )
+            
+            print(f"\n✅ Scrape concluído!")
+            
+            # Filtrar por data se especificado
+            if args.start_date or args.end_date:
+                print(f"\n📅 Filtrando por período...")
+                
+                filters = []
+                if args.start_date:
+                    filters.append(f"date >= '{args.start_date}'")
+                    print(f"   Data inicial: {args.start_date}")
+                if args.end_date:
+                    filters.append(f"date <= '{args.end_date}'")
+                    print(f"   Data final: {args.end_date}")
+                
+                where_clause = " AND ".join(filters)
+                sql = f"SELECT COUNT(*) as total FROM articles WHERE {where_clause}"
+                
+                print(f"\n   Query: {sql}")
+                query_dataset(args.dataset_dir, sql, format="table")
+        
+        else:
+            print(f"\n⏩ Scrape pulado (--skip-scrape)")
+        
         return 0
 
     if args.cmd == "sources":
@@ -502,6 +751,87 @@ def main(argv: list[str] | None = None) -> int:
                     dataset_dir=args.dataset_dir,
                     delay_seconds=2.0,
                 )
+                print(f"✓ Scrape concluído: {args.dataset_dir}")
+        
+        elif args.browser_cmd == "valor":
+            from .valor_scraper import ValorScraper
+            
+            print(f"Iniciando browser (headless={args.headless})...")
+            with ProfessionalScraper(config) as scraper:
+                valor = ValorScraper(scraper)
+                
+                print(f"Coletando artigos do Valor (categoria: {args.category or 'todas'})...")
+                urls = valor.get_latest_articles(
+                    category=args.category,
+                    limit=args.limit,
+                )
+                
+                args.out.parent.mkdir(parents=True, exist_ok=True)
+                args.out.write_text("\n".join(urls) + "\n", encoding="utf-8")
+                print(f"✓ {len(urls)} URLs salvas em {args.out}")
+            
+            if args.scrape:
+                if not urls:
+                    print("Nenhuma URL coletada para scrape.")
+                    return 1
+                if not args.dataset_dir:
+                    parser.error("Informe --dataset-dir para scrape")
+                print(f"\nIniciando scrape de {len(urls)} artigos...")
+                scrape_urls(urls, out_path=None, dataset_dir=args.dataset_dir, delay_seconds=2.0)
+                print(f"✓ Scrape concluído: {args.dataset_dir}")
+        
+        elif args.browser_cmd == "bloomberg":
+            from .bloomberg_scraper import BloombergScraper
+            
+            print(f"Iniciando browser (headless={args.headless})...")
+            with ProfessionalScraper(config) as scraper:
+                bloomberg = BloombergScraper(scraper)
+                
+                print(f"Coletando artigos da Bloomberg (categoria: {args.category or 'todas'})...")
+                urls = bloomberg.get_latest_articles(
+                    category=args.category,
+                    limit=args.limit,
+                )
+                
+                args.out.parent.mkdir(parents=True, exist_ok=True)
+                args.out.write_text("\n".join(urls) + "\n", encoding="utf-8")
+                print(f"✓ {len(urls)} URLs salvas em {args.out}")
+            
+            if args.scrape:
+                if not urls:
+                    print("Nenhuma URL coletada para scrape.")
+                    return 1
+                if not args.dataset_dir:
+                    parser.error("Informe --dataset-dir para scrape")
+                print(f"\nIniciando scrape de {len(urls)} artigos...")
+                scrape_urls(urls, out_path=None, dataset_dir=args.dataset_dir, delay_seconds=2.0)
+                print(f"✓ Scrape concluído: {args.dataset_dir}")
+        
+        elif args.browser_cmd == "einvestidor":
+            from .einvestidor_scraper import EInvestidorScraper
+            
+            print(f"Iniciando browser (headless={args.headless})...")
+            with ProfessionalScraper(config) as scraper:
+                einvestidor = EInvestidorScraper(scraper)
+                
+                print(f"Coletando artigos do E-Investidor (categoria: {args.category or 'todas'})...")
+                urls = einvestidor.get_latest_articles(
+                    category=args.category,
+                    limit=args.limit,
+                )
+                
+                args.out.parent.mkdir(parents=True, exist_ok=True)
+                args.out.write_text("\n".join(urls) + "\n", encoding="utf-8")
+                print(f"✓ {len(urls)} URLs salvas em {args.out}")
+            
+            if args.scrape:
+                if not urls:
+                    print("Nenhuma URL coletada para scrape.")
+                    return 1
+                if not args.dataset_dir:
+                    parser.error("Informe --dataset-dir para scrape")
+                print(f"\nIniciando scrape de {len(urls)} artigos...")
+                scrape_urls(urls, out_path=None, dataset_dir=args.dataset_dir, delay_seconds=2.0)
                 print(f"✓ Scrape concluído: {args.dataset_dir}")
 
         return 0
