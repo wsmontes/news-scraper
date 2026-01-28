@@ -28,6 +28,66 @@ pip install -e .
 
 ## Uso rápido
 
+### Exemplo prático: InfoMoney
+
+**Passo 1: Extrair URLs com browser scraping**
+
+```python
+# Criar script para extrair URLs de artigos
+from news_scraper.browser import BrowserConfig, ProfessionalScraper
+
+config = BrowserConfig(headless=True)
+with ProfessionalScraper(config) as scraper:
+    scraper.get_page('https://www.infomoney.com.br/', wait_time=3)
+    scraper.scroll_and_load(scroll_pause=1.5, max_scrolls=3)
+    
+    all_links = scraper.driver.find_elements('css selector', 'a')
+    
+    article_urls = []
+    for link in all_links:
+        href = link.get_attribute('href')
+        if href and '/mercados/' in href and len(href) > 60:
+            article_urls.append(href)
+    
+    article_urls = sorted(set(article_urls))[:20]
+    
+    with open('data/raw/infomoney_urls.txt', 'w') as f:
+        f.write('\n'.join(article_urls))
+    
+    print(f"✓ {len(article_urls)} URLs salvas")
+```
+
+**Passo 2: Scrape os artigos para dataset Parquet**
+
+```bash
+news-scraper scrape \
+  --input data/raw/infomoney_urls.txt \
+  --dataset-dir data/processed/articles \
+  --delay 2.0
+```
+
+**Passo 3: Consultar os dados**
+
+```bash
+# Ver estatísticas
+news-scraper stats --dataset-dir data/processed/articles
+
+# Consultar com SQL
+news-scraper query --dataset-dir data/processed/articles \
+  --sql "SELECT title, LENGTH(text) as chars FROM articles LIMIT 5"
+
+# Exportar para análise de sentimento
+news-scraper query --dataset-dir data/processed/articles \
+  --sql "SELECT title, text FROM articles" \
+  --format csv > infomoney_export.csv
+```
+
+Ou use o script de demonstração completo:
+
+```bash
+python scripts/demo_infomoney.py
+```
+
 ### 1) Extrair a partir de uma lista de URLs
 
 ```bash
