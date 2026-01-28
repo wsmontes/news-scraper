@@ -59,6 +59,71 @@ def _text_from_html_paragraphs(soup: BeautifulSoup) -> str | None:
     return text or None
 
 
+def _date_from_html(soup: BeautifulSoup) -> datetime | None:
+    """Extrai data de publicação de meta tags e time tags."""
+    # Meta tags comuns
+    date_metas = [
+        'article:published_time',
+        'datePublished',
+        'date',
+        'pubdate',
+        'publish_date',
+        'dc.date',
+        'sailthru.date',
+    ]
+    
+    for meta_name in date_metas:
+        # Tenta property
+        tag = soup.find('meta', {'property': meta_name})
+        if tag and tag.get('content'):
+            date = _parse_date(tag.get('content'))
+            if date:
+                return date
+        
+        # Tenta name
+        tag = soup.find('meta', {'name': meta_name})
+        if tag and tag.get('content'):
+            date = _parse_date(tag.get('content'))
+            if date:
+                return date
+    
+    # Time tags
+    time_tag = soup.find('time', {'datetime': True})
+    if time_tag:
+        date = _parse_date(time_tag.get('datetime'))
+        if date:
+            return date
+    
+    return None
+
+
+def _source_from_html(soup: BeautifulSoup) -> str | None:
+    """Extrai nome da fonte de meta tags."""
+    source_metas = [
+        'og:site_name',
+        'twitter:site',
+        'application-name',
+        'publisher',
+    ]
+    
+    for meta_name in source_metas:
+        # Tenta property
+        tag = soup.find('meta', {'property': meta_name})
+        if tag and tag.get('content'):
+            content = tag.get('content')
+            if isinstance(content, str) and content.strip():
+                return content.strip()
+        
+        # Tenta name
+        tag = soup.find('meta', {'name': meta_name})
+        if tag and tag.get('content'):
+            content = tag.get('content')
+            if isinstance(content, str) and content.strip():
+                return content.strip()
+    
+    return None
+
+
 def extract_article(html: str, url: str) -> Article:
     """Extrai metadados e texto de uma página HTML.
 
@@ -102,7 +167,7 @@ def extract_article(html: str, url: str) -> Article:
 
     # Completa campos faltantes com heurísticas do HTML.
     soup: BeautifulSoup | None = None
-    if article.title is None or article.text is None:
+    if article.title is None or article.text is None or article.date_published is None or article.source is None:
         soup = BeautifulSoup(html, "lxml")
 
     if article.title is None and soup is not None:
@@ -110,9 +175,35 @@ def extract_article(html: str, url: str) -> Article:
 
     if article.text is None and soup is not None:
         article.text = _text_from_html_paragraphs(soup)
+    
+    if article.date_published is None and soup is not None:
+        article.date_published = _date_from_html(soup)
+    
+    if article.source is None and soup is not None:
+        article.source = _source_from_html(soup)
 
     # Normalização leve
     if article.text:
         article.text = "\n".join(line.rstrip() for line in article.text.splitlines()).strip() or None
 
+    return article
+
+
+def extract_article_metadata(url: str, driver) -> Article:
+    """
+    Extrai metadados de um artigo a partir de um driver Selenium.
+    
+    Args:
+        url: URL do artigo
+        driver: Instância do Selenium WebDriver
+        
+    Returns:
+        Article com metadados extraídos
+    """
+    html = driver.page_source
+    article = extract_article(html, url)
+    
+    # Adicionar timestamp de coleta
+    article.scraped_at = datetime.now()
+    
     return article

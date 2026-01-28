@@ -225,6 +225,42 @@ def build_parser() -> argparse.ArgumentParser:
     browser_custom.add_argument("--out", type=Path, required=True, help="Arquivo de saída (.txt)")
     browser_custom.add_argument("--headless", action="store_true", default=True)
 
+    browser_infomoney = browser_sub.add_parser("infomoney", help="InfoMoney (portal financeiro brasileiro)")
+    browser_infomoney.add_argument(
+        "--category",
+        choices=["mercados", "economia", "investimentos", "negocios", "carreira"],
+        default=None,
+        help="Categoria específica (None = homepage com todas)",
+    )
+    browser_infomoney.add_argument("--limit", type=int, default=20, help="Máximo de URLs")
+    browser_infomoney.add_argument("--out", type=Path, required=True, help="Arquivo de saída (.txt)")
+    browser_infomoney.add_argument(
+        "--scrape",
+        action="store_true",
+        help="Após coletar URLs, scrape os artigos",
+    )
+    browser_infomoney.add_argument(
+        "--dataset-dir",
+        type=Path,
+        help="Diretório do dataset Parquet (se --scrape)",
+    )
+    browser_infomoney.add_argument("--headless", action="store_true", default=True)
+
+    browser_moneytimes = browser_sub.add_parser("moneytimes", help="Money Times (notícias financeiras)")
+    browser_moneytimes.add_argument("--limit", type=int, default=20, help="Máximo de URLs")
+    browser_moneytimes.add_argument("--out", type=Path, required=True, help="Arquivo de saída (.txt)")
+    browser_moneytimes.add_argument(
+        "--scrape",
+        action="store_true",
+        help="Após coletar URLs, scrape os artigos",
+    )
+    browser_moneytimes.add_argument(
+        "--dataset-dir",
+        type=Path,
+        help="Diretório do dataset Parquet (se --scrape)",
+    )
+    browser_moneytimes.add_argument("--headless", action="store_true", default=True)
+
     return p
 
 
@@ -400,6 +436,73 @@ def main(argv: list[str] | None = None) -> int:
                 args.out.parent.mkdir(parents=True, exist_ok=True)
                 args.out.write_text("\n".join(urls) + "\n", encoding="utf-8")
                 print(f"✓ {len(urls)} URLs extraídas em {args.out}")
+
+        elif args.browser_cmd == "infomoney":
+            from .infomoney_scraper import InfoMoneyScraper
+            
+            print(f"Iniciando browser (headless={args.headless})...")
+            with ProfessionalScraper(config) as scraper:
+                infomoney = InfoMoneyScraper(scraper)
+                
+                print(f"Coletando artigos do InfoMoney (categoria: {args.category or 'todas'})...")
+                urls = infomoney.get_latest_articles(
+                    category=args.category,
+                    limit=args.limit,
+                )
+                
+                args.out.parent.mkdir(parents=True, exist_ok=True)
+                args.out.write_text("\n".join(urls) + "\n", encoding="utf-8")
+                print(f"✓ {len(urls)} URLs salvas em {args.out}")
+            
+            # Scrape se solicitado
+            if args.scrape:
+                if not urls:
+                    print("Nenhuma URL coletada para scrape.")
+                    return 1
+
+                if not args.dataset_dir:
+                    parser.error("Informe --dataset-dir para scrape")
+
+                print(f"\nIniciando scrape de {len(urls)} artigos...")
+                scrape_urls(
+                    urls,
+                    out_path=None,
+                    dataset_dir=args.dataset_dir,
+                    delay_seconds=2.0,
+                )
+                print(f"✓ Scrape concluído: {args.dataset_dir}")
+
+        elif args.browser_cmd == "moneytimes":
+            from .moneytimes_scraper import MoneyTimesScraper
+            
+            print(f"Iniciando browser (headless={args.headless})...")
+            with ProfessionalScraper(config) as scraper:
+                moneytimes = MoneyTimesScraper(scraper)
+                
+                print(f"Coletando artigos do Money Times...")
+                urls = moneytimes.get_latest_articles(limit=args.limit)
+                
+                args.out.parent.mkdir(parents=True, exist_ok=True)
+                args.out.write_text("\n".join(urls) + "\n", encoding="utf-8")
+                print(f"✓ {len(urls)} URLs salvas em {args.out}")
+            
+            # Scrape se solicitado
+            if args.scrape:
+                if not urls:
+                    print("Nenhuma URL coletada para scrape.")
+                    return 1
+
+                if not args.dataset_dir:
+                    parser.error("Informe --dataset-dir para scrape")
+
+                print(f"\nIniciando scrape de {len(urls)} artigos...")
+                scrape_urls(
+                    urls,
+                    out_path=None,
+                    dataset_dir=args.dataset_dir,
+                    delay_seconds=2.0,
+                )
+                print(f"✓ Scrape concluído: {args.dataset_dir}")
 
         return 0
 
