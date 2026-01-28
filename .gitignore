@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.dist/
+dist/
+build/
+*.egg-info/
+.venv/
+.env
+
+# Outputs
+outputs/
+*.json
+*.jsonl
+*.csv
+
+# Data-science style data dirs (keep docs only)
+data/
+!data/README.md

@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "news-scraper"
+version = "0.1.0"
+description = "Scraper acadêmico de notícias (URLs e RSS) com exportação JSONL/CSV"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Academic Project" }]
+license = { text = "MIT" }
+dependencies = [
+  "requests>=2.31",
+  "beautifulsoup4>=4.12",
+  "lxml>=5.0",
+  "trafilatura>=1.9",
+  "feedparser>=6.0",
+  "python-dateutil>=2.9",
+  "tqdm>=4.66",
+  "duckdb>=0.10",
+  "pyarrow>=14.0",
+  "selenium>=4.15",
+  "webdriver-manager>=4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.4",
+]
+playwright = [
+  "playwright>=1.40",
+]
+
+[project.scripts]
+news-scraper = "news_scraper.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
